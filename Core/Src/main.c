@@ -120,7 +120,7 @@ int main(void)
   {
     moveMotor(3000, 1500);
     
-    HAL_Delay(1000);
+    HAL_Delay(3000);
   /* USER CODE END WHILE */
 
 
@@ -327,10 +327,6 @@ static void MX_GPIO_Init(void)
 
 
 
-
-
-
-
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 {
     if (htim->Instance == TIM1) {
@@ -373,26 +369,31 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
             case STATE_DECEL:
             {
                 if (n > 0) {
-
                     n--;
                     int32_t denom = (4 * n) - 1;
-                    int32_t delta = (int32_t)(((2ULL * currentARR) + (denom / 2)) / denom);
-
-                    if (delta < 1) {
-                        delta = 1;
+                    if (denom > 0) {
+                        int32_t delta = (int32_t)(((2ULL * currentARR) + (denom / 2)) / denom);
+                        if (delta < 1) {
+                            delta = 1;
+                        }
+                        currentARR += delta;
                     }
-
-                    currentARR += delta;
                     if (currentARR > accelARR) {
                         currentARR = accelARR;
                     }
-                    
+                } else {
+                    currentARR = accelARR; // Safely hold baseline speed once ramp-down finishes
                 }
+                 
+                    
 
                 if (stepCounter >= targetSteps) {
                     state = STATE_IDLE;
                     motionComplete = 1;
                     __HAL_TIM_DISABLE_IT(&htim1, TIM_IT_UPDATE);
+                    HAL_TIM_PWM_Stop(&htim1, TIM_CHANNEL_1); 
+                    __HAL_TIM_MOE_DISABLE(&htim1);
+                    return;
                 }
                 break;
             }
@@ -414,6 +415,10 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 
 void moveMotor(uint32_t steps, uint32_t startARR){
 
+    if(state != STATE_IDLE){
+      return;
+    }
+
     targetSteps = steps;
     motionComplete = 0;
     stepCounter = 0;
@@ -423,31 +428,26 @@ void moveMotor(uint32_t steps, uint32_t startARR){
     currentARR = accelARR;
     rampSteps = targetSteps / 2;
 
-    // Apply starting ARR and 50% duty cycle
+
     __HAL_TIM_SET_AUTORELOAD(&htim1, currentARR);
-    __HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_1, currentARR / 2);
+    __HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_1, currentARR / 2); //%50 duty cycle always
     __HAL_TIM_SET_COUNTER(&htim1, 0);
 
-    // Enable Output Compare Preload to prevent timing glitches mid-pulse
-    __HAL_TIM_ENABLE_OCxPRELOAD(&htim1, TIM_CHANNEL_1);
+  
+    __HAL_TIM_ENABLE_OCxPRELOAD(&htim1, TIM_CHANNEL_1); //output compare preload
     __HAL_TIM_CLEAR_FLAG(&htim1, TIM_FLAG_UPDATE);
 
     state = STATE_ACCEL;
 
-    // Start PWM and Interrupt using proper HAL functions (do NOT manually overwrite handle state)
-    HAL_TIM_Base_Start_IT(&htim1);
+    //start pwm
+    __HAL_TIM_ENABLE_IT(&htim1, TIM_IT_UPDATE);
     HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_1);
     __HAL_TIM_MOE_ENABLE(&htim1);
 
-    // Wait for ISR to complete the move
-    while(motionComplete == 0) {
-        // Block until target step count is reached
-    }
-
-    // Properly stop hardware peripherals
-    HAL_TIM_PWM_Stop(&htim1, TIM_CHANNEL_1);
-    HAL_TIM_Base_Stop_IT(&htim1);
-    __HAL_TIM_MOE_DISABLE(&htim1);
+  
+   
+    //kill everything
+    
 
 }
 /* USER CODE END 4 */
