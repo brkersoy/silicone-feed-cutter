@@ -55,8 +55,8 @@ volatile uint32_t stepCounter;
 volatile uint32_t targetSteps;
 volatile uint32_t rampSteps;
 
-volatile uint32_t baseARR = 1000;
-volatile uint32_t accelARR = 5000;
+volatile uint32_t baseARR = 300;
+volatile uint32_t accelARR = 2000;
 volatile uint32_t currentARR = 0;
 volatile int32_t  n = 0;
 
@@ -69,7 +69,7 @@ static void MX_GPIO_Init(void);
 static void MX_TIM1_Init(void);
 static void MX_USART2_UART_Init(void);
 /* USER CODE BEGIN PFP */
-
+void moveMotor(uint32_t steps,uint32_t startARR);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -114,47 +114,15 @@ int main(void)
   /* USER CODE END 2 */
 
   /* Infinite loop */
+
   /* USER CODE BEGIN WHILE */
   while (1)
   {
-    targetSteps = 1000;
-    motionComplete = 0;
-    stepCounter = 0;
-    n = 0;
-
-    currentARR = accelARR;
-
-    rampSteps = targetSteps / 2; // might implement later
-
-
-    __HAL_TIM_SET_AUTORELOAD(&htim1, currentARR);
-    __HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_1, currentARR / 2);
-
-    __HAL_TIM_SET_COUNTER(&htim1, 0);
-    __HAL_TIM_CLEAR_FLAG(&htim1, TIM_FLAG_UPDATE);
-
-    state = STATE_ACCEL;
-
-    htim1.State = HAL_TIM_STATE_READY;
-    htim1.ChannelState[0] = HAL_TIM_CHANNEL_STATE_READY;
-     
-    __HAL_TIM_ENABLE_IT(&htim1, TIM_IT_UPDATE);
-    HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_1);
-    __HAL_TIM_MOE_ENABLE(&htim1);
-
-
-
-    while(motionComplete == 0){
-
-    }
-
-    HAL_TIM_PWM_Stop(&htim1, TIM_CHANNEL_1);
-    __HAL_TIM_MOE_DISABLE(&htim1);
-
-    HAL_Delay(1000);
+    moveMotor(3000, 1500);
     
+    HAL_Delay(1000);
+  /* USER CODE END WHILE */
 
-    /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
   }
@@ -356,55 +324,131 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
-void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim){
 
-    if(htim->Instance == TIM1){
+
+
+
+
+
+
+void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
+{
+    if (htim->Instance == TIM1) {
         stepCounter++;
 
-        switch (state){
+        switch (state) {
+
             case STATE_ACCEL:
+            {
+                n++;
+                int32_t delta = (int32_t)(((2ULL * currentARR) + ((4 * n) + 1) / 2) / ((4 * n) + 1));
+                
+                if (delta < 1) {
+                    delta = 1; 
+                }
 
-            n++;
-            currentARR = currentARR - ((2 *  currentARR) / (4 * n + 1));
+                if ((currentARR > baseARR) && (currentARR > delta) && ((currentARR - delta) >= baseARR)) {
+                    currentARR -= delta;
+                } else {
+                    currentARR = baseARR;
+                    rampSteps = stepCounter;
+                    state = STATE_CRUISE;
+                }
 
-            if(currentARR <= baseARR){
-              currentARR = baseARR;
-              rampSteps = stepCounter;
-              state = STATE_CRUISE;
+                if (stepCounter >= (targetSteps / 2)) {
+                    rampSteps = stepCounter;
+                    state = STATE_DECEL;
+                }
+                break;
             }
-            //implement triangulation maybeeeyyyyy who knows
-
-            break;
 
             case STATE_CRUISE:
-            
-            if(stepCounter >= (targetSteps - rampSteps)){
-              state = STATE_DECEL;
+            {
+                if (stepCounter >= (targetSteps - rampSteps)) {
+                    state = STATE_DECEL;
+                }
+                break;
             }
-
-            break;
 
             case STATE_DECEL:
+            {
+                if (n > 0) {
 
-            if(n > 1){
-                n--;
-                currentARR = currentARR + ((2 *  currentARR) / (4 * n - 1));
+                    n--;
+                    int32_t denom = (4 * n) - 1;
+                    int32_t delta = (int32_t)(((2ULL * currentARR) + (denom / 2)) / denom);
+
+                    if (delta < 1) {
+                        delta = 1;
+                    }
+
+                    currentARR += delta;
+                    if (currentARR > accelARR) {
+                        currentARR = accelARR;
+                    }
+                    
+                }
+
+                if (stepCounter >= targetSteps) {
+                    state = STATE_IDLE;
+                    motionComplete = 1;
+                    __HAL_TIM_DISABLE_IT(&htim1, TIM_IT_UPDATE);
+                }
+                break;
             }
 
-            if(stepCounter >= targetSteps){
-
-              state = STATE_IDLE;
-              motionComplete = 1;
-            __HAL_TIM_DISABLE_IT(&htim1, TIM_IT_UPDATE);
-            }
-
-            break;
+            default:
+                break;
         }
 
 
         __HAL_TIM_SET_AUTORELOAD(&htim1, currentARR);
-        __HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_1, currentARR / 2);
+        __HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_1, currentARR / 2); //50% duty cycle always!
     }
+}
+
+
+////////////////////////////////////////////////////// i like a lil seperation
+
+
+
+void moveMotor(uint32_t steps, uint32_t startARR){
+
+    targetSteps = steps;
+    motionComplete = 0;
+    stepCounter = 0;
+    n = 0;
+
+    accelARR = startARR;
+    currentARR = accelARR;
+    rampSteps = targetSteps / 2;
+
+    // Apply starting ARR and 50% duty cycle
+    __HAL_TIM_SET_AUTORELOAD(&htim1, currentARR);
+    __HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_1, currentARR / 2);
+    __HAL_TIM_SET_COUNTER(&htim1, 0);
+
+    // Enable Output Compare Preload to prevent timing glitches mid-pulse
+    __HAL_TIM_ENABLE_OCxPRELOAD(&htim1, TIM_CHANNEL_1);
+    __HAL_TIM_CLEAR_FLAG(&htim1, TIM_FLAG_UPDATE);
+
+    state = STATE_ACCEL;
+
+    // Start PWM and Interrupt using proper HAL functions (do NOT manually overwrite handle state)
+    HAL_TIM_Base_Start_IT(&htim1);
+    HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_1);
+    __HAL_TIM_MOE_ENABLE(&htim1);
+
+    // Wait for ISR to complete the move
+    while(motionComplete == 0) {
+        // Block until target step count is reached
+    }
+
+    // Properly stop hardware peripherals
+    HAL_TIM_PWM_Stop(&htim1, TIM_CHANNEL_1);
+    HAL_TIM_Base_Stop_IT(&htim1);
+    __HAL_TIM_MOE_DISABLE(&htim1);
+
 }
 /* USER CODE END 4 */
 
