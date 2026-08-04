@@ -1,0 +1,19 @@
+# Build outputs & binaries
+Debug/
+Release/
+*.o
+*.elf
+*.hex
+*.bin
+*.map
+*.d
+
+# IDE specific files
+.settings/
+.project
+.cproject
+*.launch
+
+# Temporary files
+*.tmp
+*.bak
