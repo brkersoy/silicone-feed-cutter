@@ -32,6 +32,23 @@ typedef enum {
     STATE_CRUISE,
     STATE_DECEL
 } MotionState_t;
+
+typedef enum{
+    SYS_IDLE, 
+    SYS_START,
+    SYS_MOTORMOVE,
+    SYS_MOTORWAIT,
+    SYS_WAIT_BEFORE_EX,
+    SYS_DYC_EXTEND,
+    SYS_DYC_PRESS_WAIT,
+    SYS_DYC_RETRACT,
+    SYS_WAIT_AFTER_RET,
+
+//    SYS_CUT,
+    SYS_WAIT_AFTER_CUT,
+
+    SYS_DONE
+}MovementState_t;
 /* USER CODE END PTD */
 
 /* Private define ------------------------------------------------------------*/
@@ -64,9 +81,15 @@ volatile uint8_t motionComplete = 0;
 
 uint8_t delAmount;
 uint8_t yarAmount;
-uint8_t dyAmount;
+uint8_t dycAmount;
 
 uint8_t rx_buff[10];
+
+MovementState_t processState = SYS_START;
+
+uint8_t triggerMove = 0;
+
+uint32_t delayStartTime = 0;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -77,7 +100,7 @@ static void MX_USART2_UART_Init(void);
 /* USER CODE BEGIN PFP */
 void moveMotor(uint32_t steps,uint32_t targetARR);
 
-void processSequence(char *dyOrder, uint32_t *stepOrder, uint32_t totalActions, uint32_t moveArr);
+void processSequence(char *dycOrder, uint32_t *stepOrder, uint32_t totalActions, uint32_t moveArr);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -123,22 +146,25 @@ int main(void)
 
   delAmount = 2;
   yarAmount = 1;
-  dyAmount = delAmount + yarAmount;
+  dycAmount = delAmount + yarAmount;
 
-  char *dyOrder = malloc(dyAmount * sizeof(char));
-  uint32_t *stepOrder = malloc(dyAmount * sizeof(uint32_t));
+  char *dycOrder = malloc(dycAmount * sizeof(char) + 1);
+  uint32_t *stepOrder = malloc(dycAmount * sizeof(uint32_t) + 1);
 
-  if (dyOrder == NULL || stepOrder == NULL) {
+  if (dycOrder == NULL || stepOrder == NULL) {
     
 }
 
-  dyOrder[0] = 'y';
-  dyOrder[1] = 'd';
-  dyOrder[2] = 'y';
+  dycOrder[0] = 'y';
+  dycOrder[1] = 'd';
+  dycOrder[2] = 'y';
+  dycOrder[3] = 'c';
+
 
   stepOrder[0] = 2000;
   stepOrder[1] = 3000;
   stepOrder[2] = 1000;
+  stepOrder[3] = 3000;
 
 
   
@@ -148,9 +174,7 @@ int main(void)
   /* USER CODE BEGIN WHILE */
   while (1)
   {
-    moveMotor(3000, 150);
     
-    HAL_Delay(1000);
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
@@ -414,7 +438,7 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
                         currentARR = accelARR;
                     }
                 } else {
-                    currentARR = accelARR; // Safely hold baseline speed once ramp-down finishes
+                    currentARR = accelARR; // hold baseline speed
                 }
                  
                     
@@ -424,7 +448,7 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
                     motionComplete = 1;
                     __HAL_TIM_DISABLE_IT(&htim1, TIM_IT_UPDATE);
                     HAL_TIM_PWM_Stop(&htim1, TIM_CHANNEL_1); 
-                    __HAL_TIM_MOE_DISABLE(&htim1); //kill 7 billion people
+                    __HAL_TIM_MOE_DISABLE(&htim1); //kill 7 billion timers
                     return;
                 }
                 break;
@@ -482,25 +506,124 @@ void moveMotor(uint32_t steps, uint32_t targetARR){
 
 ///////////////////////////////////////////////////////////////////////////////////////////
 
-void processSequence(char *dyOrder, uint32_t *stepOrder, uint32_t totalActions, uint32_t moveArr){
-    
-  for(uint32_t i = 0; i < totalActions; i++){
-      if(dyOrder[i] == 'd'){ //DELME
-          moveMotor(stepOrder[i], moveArr);    
-          if(state == STATE_IDLE){
-            HAL_GPIO_WritePin(DELME_GPIO_Port, DELME_Pin, 1);    
-          }
+void processSequence(char *dycOrder, uint32_t *stepOrder, uint32_t totalActions, uint32_t moveArr){
 
-      }
-      else if(dyOrder[i] == 'y'){ //YARMA
-          moveMotor(stepOrder[i], moveArr);    
-          if(state == STATE_IDLE){
-            HAL_GPIO_WritePin(YARMA_GPIO_Port, YARMA_Pin, 1);    
-          }
+    static uint8_t i = 0;
 
 
-      }
-  }
+    switch(processState){
+        case SYS_START:
+            if(triggerMove == 1 && state == STATE_IDLE){
+                i = 0;
+                processState = SYS_MOTORMOVE;
+            }
+            break;
+
+        case SYS_MOTORMOVE:
+            moveMotor(stepOrder[i], moveArr);
+            processState = SYS_MOTORWAIT;
+            
+            break;
+
+        case SYS_MOTORWAIT:
+
+            if(state == STATE_IDLE){
+                processState = SYS_WAIT_BEFORE_EX;
+                delayStartTime = HAL_GetTick();
+                
+            }
+            break;
+
+        case SYS_WAIT_BEFORE_EX:
+            if((HAL_GetTick() - delayStartTime) >= 500){
+                processState = SYS_DYC_EXTEND;
+            }
+            break;
+
+        case SYS_DYC_EXTEND:
+            if(dycOrder[i] == 'd'){
+                HAL_GPIO_WritePin(DELME_GPIO_Port, DELME_Pin, 1);
+                processState = SYS_DYC_PRESS_WAIT;
+                delayStartTime = HAL_GetTick();
+            }
+            
+
+            else if(dycOrder[i] == 'y'){
+                HAL_GPIO_WritePin(YARMA_GPIO_Port, YARMA_Pin, 1);
+                processState = SYS_DYC_PRESS_WAIT;
+                delayStartTime = HAL_GetTick();
+            }
+
+            else if(dycOrder[i] == 'c'){
+                HAL_GPIO_WritePin(KESME_GPIO_Port, KESME_Pin, 1);
+                processState = SYS_DYC_PRESS_WAIT;
+                delayStartTime = HAL_GetTick();
+              
+            }
+            break;
+
+          case SYS_DYC_PRESS_WAIT:
+
+             if((HAL_GetTick() - delayStartTime) >= 1000){
+                 processState = SYS_DYC_RETRACT;
+             }
+             break;
+          
+          case SYS_DYC_RETRACT:
+
+              if(dycOrder[i] == 'd'){
+                  HAL_GPIO_WritePin(DELME_GPIO_Port, DELME_Pin, 0);
+                  processState = SYS_WAIT_AFTER_RET;
+                  delayStartTime = HAL_GetTick();
+              }
+
+              else if(dycOrder[i] == 'y'){
+                  HAL_GPIO_WritePin(YARMA_GPIO_Port, YARMA_Pin, 0);
+                  processState = SYS_WAIT_AFTER_RET;
+                  delayStartTime = HAL_GetTick();
+              }
+
+              else if(dycOrder[i] == 'c'){
+                  HAL_GPIO_WritePin(KESME_GPIO_Port, KESME_Pin, 0);
+                  processState = SYS_WAIT_AFTER_CUT;
+                  delayStartTime = HAL_GetTick();
+              }
+
+              break;
+
+          case SYS_WAIT_AFTER_RET:
+
+              if((HAL_GetTick() - delayStartTime) >= 500){
+                  i++;
+
+              if (i >= totalActions) {
+                  i = 0;
+                  triggerMove = 0; 
+                  processState = SYS_START;
+              } else {
+                  processState = SYS_MOTORMOVE;
+              }               
+
+              }
+              break;
+
+
+          /*
+          Cut branch
+          */
+
+          case SYS_WAIT_AFTER_CUT:
+
+            if((HAL_GetTick() - delayStartTime) >= 1000){
+                 i = 0;
+                 triggerMove = 0;
+                 processState = SYS_START;
+             }
+              
+
+
+    }
+  
 }
 
 
