@@ -21,7 +21,8 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-
+#include <stdio.h>
+#include <stdlib.h>
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -45,7 +46,7 @@ typedef enum{
     SYS_WAIT_AFTER_RET,
 
 //    SYS_CUT,
-    SYS_WAIT_AFTER_CUT,
+ //   SYS_WAIT_AFTER_CUT,
 
    // SYS_DONE
 }MovementState_t;
@@ -83,7 +84,7 @@ typedef struct { //for ONE item only
 /* Private variables ---------------------------------------------------------*/
 TIM_HandleTypeDef htim1;
 
-UART_HandleTypeDef huart2;
+UART_HandleTypeDef huart6;
 
 /* USER CODE BEGIN PV */
 volatile MotionState_t state = STATE_IDLE;
@@ -116,21 +117,25 @@ LocalFeature_t recipe[] = {
   {1500, 1, 0, 0},
   {3000, 0, 1, 0},
   {6000, 1, 0, 0},
-  {10000, 0, 0, 1},
+  {13000, 0, 0, 1},
 }; //will somehow uh make this editable
 
 uint32_t axisOffSteps = 0;
+
+uint32_t currentBatchStart = 0;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_TIM1_Init(void);
-static void MX_USART2_UART_Init(void);
+static void MX_USART6_UART_Init(void);
 /* USER CODE BEGIN PFP */
 void moveMotor(uint32_t steps,uint32_t targetARR);
 void processSequence(void);
 void CompileTimeline();
+
+
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -156,7 +161,7 @@ int main(void)
   HAL_Init();
 
   /* USER CODE BEGIN Init */
- 
+
   /* USER CODE END Init */
 
   /* Configure the system clock */
@@ -169,12 +174,20 @@ int main(void)
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
   MX_TIM1_Init();
-  MX_USART2_UART_Init();
+  MX_USART6_UART_Init();
   /* USER CODE BEGIN 2 */
 
   HAL_GPIO_WritePin(DIR_GPIO_Port, DIR_Pin, 1); //Set direction to forward
 
-  CompileTimeline();
+  HAL_GPIO_WritePin(GPIOA, LD2_Pin, GPIO_PIN_SET); // Turn on onboard LED
+  char *testMsg = "UART is alive!\r\n";
+  HAL_UART_Transmit(&huart6, (uint8_t*)testMsg, 16, 1000);
+
+  CompileTimeline(0);
+
+  char msg[64];
+  int len = sprintf(msg, "Total Events: %lu\r\n", totalEvents);
+  HAL_UART_Transmit(&huart6, (uint8_t*)msg, len, 100);
 
   triggerMove = 1;
   
@@ -315,35 +328,35 @@ static void MX_TIM1_Init(void)
 }
 
 /**
-  * @brief USART2 Initialization Function
+  * @brief USART6 Initialization Function
   * @param None
   * @retval None
   */
-static void MX_USART2_UART_Init(void)
+static void MX_USART6_UART_Init(void)
 {
 
-  /* USER CODE BEGIN USART2_Init 0 */
+  /* USER CODE BEGIN USART6_Init 0 */
 
-  /* USER CODE END USART2_Init 0 */
+  /* USER CODE END USART6_Init 0 */
 
-  /* USER CODE BEGIN USART2_Init 1 */
+  /* USER CODE BEGIN USART6_Init 1 */
 
-  /* USER CODE END USART2_Init 1 */
-  huart2.Instance = USART2;
-  huart2.Init.BaudRate = 115200;
-  huart2.Init.WordLength = UART_WORDLENGTH_8B;
-  huart2.Init.StopBits = UART_STOPBITS_1;
-  huart2.Init.Parity = UART_PARITY_NONE;
-  huart2.Init.Mode = UART_MODE_TX_RX;
-  huart2.Init.HwFlowCtl = UART_HWCONTROL_NONE;
-  huart2.Init.OverSampling = UART_OVERSAMPLING_16;
-  if (HAL_UART_Init(&huart2) != HAL_OK)
+  /* USER CODE END USART6_Init 1 */
+  huart6.Instance = USART6;
+  huart6.Init.BaudRate = 115200;
+  huart6.Init.WordLength = UART_WORDLENGTH_8B;
+  huart6.Init.StopBits = UART_STOPBITS_1;
+  huart6.Init.Parity = UART_PARITY_NONE;
+  huart6.Init.Mode = UART_MODE_TX_RX;
+  huart6.Init.HwFlowCtl = UART_HWCONTROL_NONE;
+  huart6.Init.OverSampling = UART_OVERSAMPLING_16;
+  if (HAL_UART_Init(&huart6) != HAL_OK)
   {
     Error_Handler();
   }
-  /* USER CODE BEGIN USART2_Init 2 */
+  /* USER CODE BEGIN USART6_Init 2 */
 
-  /* USER CODE END USART2_Init 2 */
+  /* USER CODE END USART6_Init 2 */
 
 }
 
@@ -382,6 +395,14 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+
+  /*Configure GPIO pins : USART_TX_Pin USART_RX_Pin */
+  GPIO_InitStruct.Pin = USART_TX_Pin|USART_RX_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
+  GPIO_InitStruct.Alternate = GPIO_AF7_USART2;
   HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
   /* USER CODE BEGIN MX_GPIO_Init_2 */
@@ -538,6 +559,10 @@ void processSequence(){
             uint32_t stepsToMove = targetAbs - currentAbsPos;
             currentAbsPos = targetAbs;
 
+            char debugBuf[64];
+            int size = sprintf(debugBuf, "Moving %lu steps (Target: %lu)\r\n", stepsToMove, targetAbs);
+            HAL_UART_Transmit(&huart6, (uint8_t*)debugBuf, size, 100);
+
             if(stepsToMove != 0){
                 moveMotor(stepsToMove, 500);
             }
@@ -561,6 +586,14 @@ void processSequence(){
             break;
 
         case SYS_DYC_EXTEND:
+
+            char toolMsg[64];
+            int tSize = sprintf(toolMsg, "Tools Firing -> D:%d Y:%d C:%d\r\n", 
+                                finalTimeline[eventIndex].isDelme, 
+                                finalTimeline[eventIndex].isYarma, 
+                                finalTimeline[eventIndex].isKesme);
+            HAL_UART_Transmit(&huart6, (uint8_t*)toolMsg, tSize, 100);
+
           
             if(finalTimeline[eventIndex].isDelme){
                 HAL_GPIO_WritePin(DELME_GPIO_Port, DELME_Pin, 1);
@@ -594,21 +627,21 @@ void processSequence(){
 
               if(finalTimeline[eventIndex].isDelme){
                   HAL_GPIO_WritePin(DELME_GPIO_Port, DELME_Pin, 0);
-                  processState = SYS_WAIT_AFTER_RET;
-                  delayStartTime = HAL_GetTick();
+
               }
 
               if(finalTimeline[eventIndex].isYarma){
                   HAL_GPIO_WritePin(YARMA_GPIO_Port, YARMA_Pin, 0);
-                  processState = SYS_WAIT_AFTER_RET;
-                  delayStartTime = HAL_GetTick();
+
               }
 
               if(finalTimeline[eventIndex].isKesme){
                   HAL_GPIO_WritePin(KESME_GPIO_Port, KESME_Pin, 0);
-                  processState = SYS_WAIT_AFTER_RET;
-                  delayStartTime = HAL_GetTick();
+
               }
+
+              processState = SYS_WAIT_AFTER_RET;
+              delayStartTime = HAL_GetTick();
 
               break;
 
@@ -616,16 +649,22 @@ void processSequence(){
 
               if((HAL_GetTick() - delayStartTime) >= 500){
                   eventIndex++;
+              if (finalTimeline[eventIndex].absoluteSteps >= ((currentBatchStart + 10) * CONTA_LENGTH)) { 
+                      
+                      currentBatchStart += 10;           // Slide the window forward 10 pieces
+                      CompileTimeline(currentBatchStart); // recompiling the next 10
 
-              if (eventIndex >= totalEvents) { //BATCH COMPLETE!!!!! we'll roll it 10 times before resetting
-                  axisOffSteps += (10U * CONTA_LENGTH);
-                  eventIndex = 0;
-                  triggerMove = 0; 
-                  processState = SYS_MOTORMOVE;
-              } else {
-                  processState = SYS_MOTORMOVE;
-              }               
-
+                      // find where it was left off
+                      for(uint32_t i = 0; i < totalEvents; i++){
+                          if(finalTimeline[i].absoluteSteps > currentAbsPos){
+                              eventIndex = i;
+                              break;
+                          }
+                      }
+                      processState = SYS_MOTORMOVE;
+                  } else {
+                      processState = SYS_MOTORMOVE;
+                  }
               }
               break;
 
@@ -650,11 +689,13 @@ void processSequence(){
 
 //you wiiiill neveeer love me agaiin
 
-void CompileTimeline(){
+void CompileTimeline(uint32_t startPiece){
 
   uint32_t rawIndex = 0;
 
-    for(uint32_t n_buffer = 0; n_buffer < 10; n_buffer++){
+  uint32_t pastBuffer = (startPiece >= 2) ? (startPiece - 2) : 0; //if i didn't add this it forgot the immediate next steps at the rollover on the 10th. it should be buffering the last two and the next 15 e.g. 8-25
+
+    for(uint32_t n_buffer = pastBuffer; n_buffer < startPiece + 15; n_buffer++){
         for(uint8_t i = 0; i < 4; i++){
         
         uint16_t toolOffset = 0;
@@ -718,6 +759,8 @@ void CompileTimeline(){
 
 
 }
+
+
 
 
 /* USER CODE END 4 */
