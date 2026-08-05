@@ -34,7 +34,7 @@ typedef enum {
 } MotionState_t;
 
 typedef enum{
-    SYS_IDLE, 
+    //SYS_IDLE, 
     SYS_START,
     SYS_MOTORMOVE,
     SYS_MOTORWAIT,
@@ -47,13 +47,32 @@ typedef enum{
 //    SYS_CUT,
     SYS_WAIT_AFTER_CUT,
 
-    SYS_DONE
+   // SYS_DONE
 }MovementState_t;
+
+typedef struct { //absolute total steps
+    uint32_t absoluteSteps;
+    uint8_t  isDelme;
+    uint8_t  isYarma;
+    uint8_t  isKesme;
+} TimelineEvent_t;
+
+typedef struct { //for ONE item only
+    float localOffsetSteps; 
+    uint8_t isD;
+    uint8_t isY;
+    uint8_t isC;
+} LocalFeature_t;
 /* USER CODE END PTD */
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
 
+#define Y_OFFSET_STEPS 1000U
+#define D_OFFSET_STEPS 3000U
+#define K_OFFSET_STEPS 7000U
+
+#define CONTA_LENGTH 13000U //what's this specific conta in english? it's not silicon, i think?
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -79,10 +98,6 @@ volatile int32_t  n = 0;
 
 volatile uint8_t motionComplete = 0;
 
-uint8_t delAmount;
-uint8_t yarAmount;
-uint8_t dycAmount;
-
 uint8_t rx_buff[10];
 
 MovementState_t processState = SYS_START;
@@ -90,6 +105,19 @@ MovementState_t processState = SYS_START;
 uint8_t triggerMove = 0;
 
 uint32_t delayStartTime = 0;
+
+//i am so confused
+
+TimelineEvent_t rawTimeline[100]; 
+TimelineEvent_t finalTimeline[100]; //100 events for 1 line, which i believe we should never hit that much, im guessing no more than like 15
+uint32_t totalEvents = 0;
+
+LocalFeature_t recipe[] = {
+  {1500, 1, 0, 0},
+  {3000, 0, 1, 0},
+  {6000, 1, 0, 0},
+  {10000, 0, 0, 1},
+}; //will somehow uh make this editable
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -99,8 +127,8 @@ static void MX_TIM1_Init(void);
 static void MX_USART2_UART_Init(void);
 /* USER CODE BEGIN PFP */
 void moveMotor(uint32_t steps,uint32_t targetARR);
-
-void processSequence(char *dycOrder, uint32_t *stepOrder, uint32_t totalActions, uint32_t moveArr);
+void processSequence(void);
+void CompileTimeline();
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -143,30 +171,6 @@ int main(void)
   /* USER CODE BEGIN 2 */
 
   HAL_GPIO_WritePin(DIR_GPIO_Port, DIR_Pin, 1); //Set direction to forward
-
-  delAmount = 2;
-  yarAmount = 1;
-  dycAmount = delAmount + yarAmount;
-
-  char *dycOrder = malloc(dycAmount * sizeof(char) + 1);
-  uint32_t *stepOrder = malloc(dycAmount * sizeof(uint32_t) + 1);
-
-  if (dycOrder == NULL || stepOrder == NULL) {
-    
-}
-
-  dycOrder[0] = 'y';
-  dycOrder[1] = 'd';
-  dycOrder[2] = 'y';
-  dycOrder[3] = 'c';
-
-
-  stepOrder[0] = 2000;
-  stepOrder[1] = 3000;
-  stepOrder[2] = 1000;
-  stepOrder[3] = 3000;
-
-
   
   /* USER CODE END 2 */
 
@@ -506,23 +510,33 @@ void moveMotor(uint32_t steps, uint32_t targetARR){
 
 ///////////////////////////////////////////////////////////////////////////////////////////
 
-void processSequence(char *dycOrder, uint32_t *stepOrder, uint32_t totalActions, uint32_t moveArr){
+void processSequence(){
 
-    static uint8_t i = 0;
+    static uint32_t eventIndex = 0;
+    static uint32_t currentAbsPos = 0;
+
 
 
     switch(processState){
         case SYS_START:
             if(triggerMove == 1 && state == STATE_IDLE){
-                i = 0;
+                eventIndex = 0; 
+                currentAbsPos = 0;
                 processState = SYS_MOTORMOVE;
             }
             break;
 
         case SYS_MOTORMOVE:
-            moveMotor(stepOrder[i], moveArr);
+        {
+            uint32_t targetAbs = finalTimeline[eventIndex].absoluteSteps;
+            uint32_t stepsToMove = targetAbs - currentAbsPos;
+            currentAbsPos = targetAbs;
+
+            if(stepsToMove != 0){
+                moveMotor(stepsToMove, 500);
+            }
             processState = SYS_MOTORWAIT;
-            
+        } //apparently we need curly braces to declare variables in a switch case?
             break;
 
         case SYS_MOTORWAIT:
@@ -541,25 +555,33 @@ void processSequence(char *dycOrder, uint32_t *stepOrder, uint32_t totalActions,
             break;
 
         case SYS_DYC_EXTEND:
-            if(dycOrder[i] == 'd'){
+            
+            if(finalTimeline[eventIndex].isDelme && finalTimeline[eventIndex].isYarma){
                 HAL_GPIO_WritePin(DELME_GPIO_Port, DELME_Pin, 1);
-                processState = SYS_DYC_PRESS_WAIT;
-                delayStartTime = HAL_GetTick();
+                HAL_GPIO_WritePin(YARMA_GPIO_Port, YARMA_Pin, 1);
+ 
+            }
+
+
+            if(finalTimeline[eventIndex].isDelme){
+                HAL_GPIO_WritePin(DELME_GPIO_Port, DELME_Pin, 1);
+ 
             }
             
 
-            else if(dycOrder[i] == 'y'){
+            if(finalTimeline[eventIndex].isYarma){
                 HAL_GPIO_WritePin(YARMA_GPIO_Port, YARMA_Pin, 1);
-                processState = SYS_DYC_PRESS_WAIT;
-                delayStartTime = HAL_GetTick();
+
             }
 
-            else if(dycOrder[i] == 'c'){
+            if(finalTimeline[eventIndex].isKesme){
                 HAL_GPIO_WritePin(KESME_GPIO_Port, KESME_Pin, 1);
-                processState = SYS_DYC_PRESS_WAIT;
-                delayStartTime = HAL_GetTick();
+                
               
             }
+
+            processState = SYS_DYC_PRESS_WAIT;
+            delayStartTime = HAL_GetTick();
             break;
 
           case SYS_DYC_PRESS_WAIT:
@@ -571,21 +593,21 @@ void processSequence(char *dycOrder, uint32_t *stepOrder, uint32_t totalActions,
           
           case SYS_DYC_RETRACT:
 
-              if(dycOrder[i] == 'd'){
+              if(finalTimeline[eventIndex].isDelme){
                   HAL_GPIO_WritePin(DELME_GPIO_Port, DELME_Pin, 0);
                   processState = SYS_WAIT_AFTER_RET;
                   delayStartTime = HAL_GetTick();
               }
 
-              else if(dycOrder[i] == 'y'){
+              if(finalTimeline[eventIndex].isYarma){
                   HAL_GPIO_WritePin(YARMA_GPIO_Port, YARMA_Pin, 0);
                   processState = SYS_WAIT_AFTER_RET;
                   delayStartTime = HAL_GetTick();
               }
 
-              else if(dycOrder[i] == 'c'){
+              if(finalTimeline[eventIndex].isKesme){
                   HAL_GPIO_WritePin(KESME_GPIO_Port, KESME_Pin, 0);
-                  processState = SYS_WAIT_AFTER_CUT;
+                  processState = SYS_WAIT_AFTER_RET;
                   delayStartTime = HAL_GetTick();
               }
 
@@ -594,10 +616,10 @@ void processSequence(char *dycOrder, uint32_t *stepOrder, uint32_t totalActions,
           case SYS_WAIT_AFTER_RET:
 
               if((HAL_GetTick() - delayStartTime) >= 500){
-                  i++;
+                  eventIndex++;
 
-              if (i >= totalActions) {
-                  i = 0;
+              if (eventIndex >= totalEvents) {
+                  eventIndex = 0;
                   triggerMove = 0; 
                   processState = SYS_START;
               } else {
@@ -609,26 +631,93 @@ void processSequence(char *dycOrder, uint32_t *stepOrder, uint32_t totalActions,
 
 
           /*
-          Cut branch
-          */
+          Cut branch  
+          might not be needed anymore?
+          
 
           case SYS_WAIT_AFTER_CUT:
 
             if((HAL_GetTick() - delayStartTime) >= 1000){
-                 i = 0;
                  triggerMove = 0;
                  processState = SYS_START;
              }
               
-
+          */
 
     }
   
 }
 
+//you wiiiill neveeer love me agaiin
+
+void CompileTimeline(){
+
+  uint32_t rawIndex = 0;
+
+    for(uint32_t n_buffer = 0; n_buffer < 10; n_buffer++){
+        for(uint8_t i = 0; i < 4; i++){
+        
+        uint16_t toolOffset = 0;
+
+        if(recipe[i].isD){
+          toolOffset = D_OFFSET_STEPS;
+        }
+        else if(recipe[i].isY){
+          toolOffset = Y_OFFSET_STEPS;
+        }
+        else if(recipe[i].isC){
+          toolOffset = K_OFFSET_STEPS;  
+        }
+
+        uint32_t absSteps = ((n_buffer * CONTA_LENGTH) + toolOffset + recipe[i].localOffsetSteps);
+
+        rawTimeline[rawIndex].absoluteSteps = absSteps;
+        rawTimeline[rawIndex].isDelme = recipe[i].isD;
+        rawTimeline[rawIndex].isYarma = recipe[i].isY;
+        rawTimeline[rawIndex].isKesme = recipe[i].isC; //rawTimeline is the timeline before its sorted by steps from the starting point x = 0
+
+        rawIndex++;
+
+        }
+
+    }
+
+    for(uint32_t i = 0; i < rawIndex - 1; i++){ //simple bubble sort to sort rawTimeline. couldnt figure put qsort
+        for(uint32_t k = 0; k < rawIndex - i -1; k++){
+
+          if(rawTimeline[k].absoluteSteps > rawTimeline[k + 1].absoluteSteps){
+              TimelineEvent_t temp = rawTimeline[k];
+              rawTimeline[k] = rawTimeline[k + 1];
+              rawTimeline[k + 1] = temp;  
+          }
+        }
 
 
+    
 
+    
+
+    }
+
+    totalEvents = 0; //merge if multiple events happen at the same time  THIS PART MIGHT BE BROKEN!
+    for (uint32_t j = 0; j < rawIndex; j++) {
+        if (totalEvents > 0 && rawTimeline[j].absoluteSteps == finalTimeline[totalEvents - 1].absoluteSteps) {
+   
+            finalTimeline[totalEvents - 1].isDelme |= rawTimeline[j].isDelme;
+            finalTimeline[totalEvents - 1].isYarma |= rawTimeline[j].isYarma;
+            finalTimeline[totalEvents - 1].isKesme |= rawTimeline[j].isKesme;
+        } else {
+
+            finalTimeline[totalEvents] = rawTimeline[j];
+            totalEvents++;
+        }
+      
+
+    }
+    //finalTimeline is the final array to use!
+
+
+}
 
 
 /* USER CODE END 4 */
