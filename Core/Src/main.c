@@ -55,12 +55,18 @@ volatile uint32_t stepCounter;
 volatile uint32_t targetSteps;
 volatile uint32_t rampSteps;
 
-volatile uint32_t baseARR = 300;
+volatile uint32_t cruiseARR = 300;
 volatile uint32_t accelARR = 2000;
 volatile uint32_t currentARR = 0;
 volatile int32_t  n = 0;
 
 volatile uint8_t motionComplete = 0;
+
+uint8_t delAmount;
+uint8_t yarAmount;
+uint8_t dyAmount;
+
+uint8_t rx_buff[10];
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -69,7 +75,9 @@ static void MX_GPIO_Init(void);
 static void MX_TIM1_Init(void);
 static void MX_USART2_UART_Init(void);
 /* USER CODE BEGIN PFP */
-void moveMotor(uint32_t steps,uint32_t startARR);
+void moveMotor(uint32_t steps,uint32_t targetARR);
+
+void processSequence(char *dyOrder, uint32_t *stepOrder, uint32_t totalActions, uint32_t moveArr);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -110,19 +118,40 @@ int main(void)
   MX_TIM1_Init();
   MX_USART2_UART_Init();
   /* USER CODE BEGIN 2 */
+
   HAL_GPIO_WritePin(DIR_GPIO_Port, DIR_Pin, 1); //Set direction to forward
+
+  delAmount = 2;
+  yarAmount = 1;
+  dyAmount = delAmount + yarAmount;
+
+  char *dyOrder = malloc(dyAmount * sizeof(char));
+  uint32_t *stepOrder = malloc(dyAmount * sizeof(uint32_t));
+
+  if (dyOrder == NULL || stepOrder == NULL) {
+    
+}
+
+  dyOrder[0] = 'y';
+  dyOrder[1] = 'd';
+  dyOrder[2] = 'y';
+
+  stepOrder[0] = 2000;
+  stepOrder[1] = 3000;
+  stepOrder[2] = 1000;
+
+
+  
   /* USER CODE END 2 */
 
   /* Infinite loop */
-
   /* USER CODE BEGIN WHILE */
   while (1)
   {
-    moveMotor(3000, 1500);
+    moveMotor(3000, 150);
     
-    HAL_Delay(3000);
-  /* USER CODE END WHILE */
-
+    HAL_Delay(1000);
+    /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
   }
@@ -303,7 +332,8 @@ static void MX_GPIO_Init(void)
   __HAL_RCC_GPIOB_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOA, LD2_Pin|DIR_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOA, DELME_Pin|YARMA_Pin|KESME_Pin|LD2_Pin
+                          |DIR_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin : B1_Pin */
   GPIO_InitStruct.Pin = B1_Pin;
@@ -311,8 +341,10 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(B1_GPIO_Port, &GPIO_InitStruct);
 
-  /*Configure GPIO pins : LD2_Pin DIR_Pin */
-  GPIO_InitStruct.Pin = LD2_Pin|DIR_Pin;
+  /*Configure GPIO pins : DELME_Pin YARMA_Pin KESME_Pin LD2_Pin
+                           DIR_Pin */
+  GPIO_InitStruct.Pin = DELME_Pin|YARMA_Pin|KESME_Pin|LD2_Pin
+                          |DIR_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
@@ -343,10 +375,10 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
                     delta = 1; 
                 }
 
-                if ((currentARR > baseARR) && (currentARR > delta) && ((currentARR - delta) >= baseARR)) {
+                if ((currentARR > cruiseARR) && (currentARR > delta) && ((currentARR - delta) >= cruiseARR)) {
                     currentARR -= delta;
                 } else {
-                    currentARR = baseARR;
+                    currentARR = cruiseARR;
                     rampSteps = stepCounter;
                     state = STATE_CRUISE;
                 }
@@ -392,7 +424,7 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
                     motionComplete = 1;
                     __HAL_TIM_DISABLE_IT(&htim1, TIM_IT_UPDATE);
                     HAL_TIM_PWM_Stop(&htim1, TIM_CHANNEL_1); 
-                    __HAL_TIM_MOE_DISABLE(&htim1);
+                    __HAL_TIM_MOE_DISABLE(&htim1); //kill 7 billion people
                     return;
                 }
                 break;
@@ -413,7 +445,7 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 
 
 
-void moveMotor(uint32_t steps, uint32_t startARR){
+void moveMotor(uint32_t steps, uint32_t targetARR){
 
     if(state != STATE_IDLE){
       return;
@@ -424,7 +456,8 @@ void moveMotor(uint32_t steps, uint32_t startARR){
     stepCounter = 0;
     n = 0;
 
-    accelARR = startARR;
+    cruiseARR = targetARR; 
+    accelARR  = cruiseARR * 6;  
     currentARR = accelARR;
     rampSteps = targetSteps / 2;
 
@@ -443,13 +476,38 @@ void moveMotor(uint32_t steps, uint32_t startARR){
     __HAL_TIM_ENABLE_IT(&htim1, TIM_IT_UPDATE);
     HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_1);
     __HAL_TIM_MOE_ENABLE(&htim1);
-
-  
-   
-    //kill everything
     
 
 }
+
+///////////////////////////////////////////////////////////////////////////////////////////
+
+void processSequence(char *dyOrder, uint32_t *stepOrder, uint32_t totalActions, uint32_t moveArr){
+    
+  for(uint32_t i = 0; i < totalActions; i++){
+      if(dyOrder[i] == 'd'){ //DELME
+          moveMotor(stepOrder[i], moveArr);    
+          if(state == STATE_IDLE){
+            HAL_GPIO_WritePin(DELME_GPIO_Port, DELME_Pin, 1);    
+          }
+
+      }
+      else if(dyOrder[i] == 'y'){ //YARMA
+          moveMotor(stepOrder[i], moveArr);    
+          if(state == STATE_IDLE){
+            HAL_GPIO_WritePin(YARMA_GPIO_Port, YARMA_Pin, 1);    
+          }
+
+
+      }
+  }
+}
+
+
+
+
+
+
 /* USER CODE END 4 */
 
 /**
