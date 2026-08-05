@@ -58,7 +58,7 @@ typedef struct { //absolute total steps
 } TimelineEvent_t;
 
 typedef struct { //for ONE item only
-    float localOffsetSteps; 
+    uint32_t localOffsetSteps; 
     uint8_t isD;
     uint8_t isY;
     uint8_t isC;
@@ -118,6 +118,8 @@ LocalFeature_t recipe[] = {
   {6000, 1, 0, 0},
   {10000, 0, 0, 1},
 }; //will somehow uh make this editable
+
+uint32_t axisOffSteps = 0;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -171,6 +173,10 @@ int main(void)
   /* USER CODE BEGIN 2 */
 
   HAL_GPIO_WritePin(DIR_GPIO_Port, DIR_Pin, 1); //Set direction to forward
+
+  CompileTimeline();
+
+  triggerMove = 1;
   
   /* USER CODE END 2 */
 
@@ -178,7 +184,7 @@ int main(void)
   /* USER CODE BEGIN WHILE */
   while (1)
   {
-    
+    processSequence();
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
@@ -521,14 +527,14 @@ void processSequence(){
         case SYS_START:
             if(triggerMove == 1 && state == STATE_IDLE){
                 eventIndex = 0; 
-                currentAbsPos = 0;
+  
                 processState = SYS_MOTORMOVE;
             }
             break;
 
         case SYS_MOTORMOVE:
         {
-            uint32_t targetAbs = finalTimeline[eventIndex].absoluteSteps;
+            uint32_t targetAbs = finalTimeline[eventIndex].absoluteSteps + axisOffSteps;
             uint32_t stepsToMove = targetAbs - currentAbsPos;
             currentAbsPos = targetAbs;
 
@@ -555,14 +561,7 @@ void processSequence(){
             break;
 
         case SYS_DYC_EXTEND:
-            
-            if(finalTimeline[eventIndex].isDelme && finalTimeline[eventIndex].isYarma){
-                HAL_GPIO_WritePin(DELME_GPIO_Port, DELME_Pin, 1);
-                HAL_GPIO_WritePin(YARMA_GPIO_Port, YARMA_Pin, 1);
- 
-            }
-
-
+          
             if(finalTimeline[eventIndex].isDelme){
                 HAL_GPIO_WritePin(DELME_GPIO_Port, DELME_Pin, 1);
  
@@ -618,10 +617,11 @@ void processSequence(){
               if((HAL_GetTick() - delayStartTime) >= 500){
                   eventIndex++;
 
-              if (eventIndex >= totalEvents) {
+              if (eventIndex >= totalEvents) { //BATCH COMPLETE!!!!! we'll roll it 10 times before resetting
+                  axisOffSteps += (10U * CONTA_LENGTH);
                   eventIndex = 0;
                   triggerMove = 0; 
-                  processState = SYS_START;
+                  processState = SYS_MOTORMOVE;
               } else {
                   processState = SYS_MOTORMOVE;
               }               
