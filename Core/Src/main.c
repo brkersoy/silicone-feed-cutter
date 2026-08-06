@@ -23,6 +23,7 @@
 /* USER CODE BEGIN Includes */
 #include <stdio.h>
 #include <stdlib.h>
+
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -64,6 +65,8 @@ typedef struct { //for ONE item only
     uint8_t isY;
     uint8_t isC;
 } LocalFeature_t;
+
+int ab;
 /* USER CODE END PTD */
 
 /* Private define ------------------------------------------------------------*/
@@ -110,7 +113,7 @@ uint32_t delayStartTime = 0;
 //i am so confused
 
 TimelineEvent_t rawTimeline[100]; 
-TimelineEvent_t finalTimeline[100]; //100 events for 1 line, which i believe we should never hit that much, im guessing no more than like 15
+TimelineEvent_t finalTimeline[100]; //100 events for 1 line, which i believe we should never hit that much, im guessing no more than like 60
 uint32_t totalEvents = 0;
 
 LocalFeature_t recipe[] = {
@@ -135,7 +138,6 @@ void moveMotor(uint32_t steps,uint32_t targetARR);
 void processSequence(void);
 void CompileTimeline();
 
-
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -152,6 +154,39 @@ int main(void)
 
   /* USER CODE BEGIN 1 */
   
+
+
+
+
+
+
+
+
+
+
+/*
+
+TODO
+
+SEPERATE INTO DIFFERENT FILES
+IMPLEMENT ARR INPUT
+ADD STEP/MM SCALING
+
+*/
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
   /* USER CODE END 1 */
 
@@ -424,7 +459,7 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
             case STATE_ACCEL:
             {
                 n++;
-                int32_t delta = (int32_t)(((2ULL * currentARR) + ((4 * n) + 1) / 2) / ((4 * n) + 1));
+                int32_t delta = (int32_t)(((2ULL * currentARR) + ((4 * n) + 1) / 2) / ((4 * n) + 1)); //avr446 algorithm. no point in complex floating point calculations
                 
                 if (delta < 1) {
                     delta = 1; 
@@ -459,9 +494,9 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
                     n--;
                     int32_t denom = (4 * n) - 1;
                     if (denom > 0) {
-                        int32_t delta = (int32_t)(((2ULL * currentARR) + (denom / 2)) / denom);
+                        int32_t delta = (int32_t)(((2ULL * currentARR) + (denom / 2)) / denom); //reverse avr446
                         if (delta < 1) {
-                            delta = 1;
+                            delta = 1;  
                         }
                         currentARR += delta;
                     }
@@ -567,7 +602,7 @@ void processSequence(){
                 moveMotor(stepsToMove, 500);
             }
             processState = SYS_MOTORWAIT;
-        } //apparently we need curly braces to declare variables in a switch case?
+        } //
             break;
 
         case SYS_MOTORWAIT:
@@ -586,7 +621,7 @@ void processSequence(){
             break;
 
         case SYS_DYC_EXTEND:
-
+            {
             char toolMsg[64];
             int tSize = sprintf(toolMsg, "Tools Firing -> D:%d Y:%d C:%d\r\n", 
                                 finalTimeline[eventIndex].isDelme, 
@@ -614,6 +649,8 @@ void processSequence(){
 
             processState = SYS_DYC_PRESS_WAIT;
             delayStartTime = HAL_GetTick();
+
+           }
             break;
 
           case SYS_DYC_PRESS_WAIT:
@@ -655,7 +692,7 @@ void processSequence(){
                       CompileTimeline(currentBatchStart); // recompiling the next 10
 
                       // find where it was left off
-                      for(uint32_t i = 0; i < totalEvents; i++){
+                      for(uint32_t i = 0; i < totalEvents; i++){ //check the absolute step of the event on the timeline and compare to current position- if it's lower it happened, if it's higher it hasn't and will be queued up
                           if(finalTimeline[i].absoluteSteps > currentAbsPos){
                               eventIndex = i;
                               break;
@@ -693,7 +730,7 @@ void CompileTimeline(uint32_t startPiece){
 
   uint32_t rawIndex = 0;
 
-  uint32_t pastBuffer = (startPiece >= 2) ? (startPiece - 2) : 0; //if i didn't add this it forgot the immediate next steps at the rollover on the 10th. it should be buffering the last two and the next 15 e.g. 8-25
+  uint32_t pastBuffer = (startPiece >= 5) ? (startPiece - 5) : 0; //if i didn't add this it forgot the immediate next steps at the rollover on the 10th. it should be buffering the last five and the next 15 e.g. 5-25
 
     for(uint32_t n_buffer = pastBuffer; n_buffer < startPiece + 15; n_buffer++){
         for(uint8_t i = 0; i < 4; i++){
