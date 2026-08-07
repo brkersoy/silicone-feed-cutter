@@ -72,11 +72,11 @@
     /* Private define ------------------------------------------------------------*/
     /* USER CODE BEGIN PD */
 
-    #define Y_OFFSET_STEPS 100.0f //yarma piston offset
-    #define D_OFFSET_STEPS 200.0f //delme piston offset
-    #define K_OFFSET_STEPS 300.0f //kesme piston offset
+    #define Y_OFFSET_STEPS 0.0f //yarma piston offset
+    #define D_OFFSET_STEPS 50.0f //delme piston offset
+    #define K_OFFSET_STEPS 80.0f //kesme piston offset
 
-    #define CONTA_LENGTH 1000.0f 
+    #define CONTA_LENGTH 1095.0f 
 
     #define PI  3.1415
     /* USER CODE END PD */
@@ -92,7 +92,7 @@
     UART_HandleTypeDef huart6;
 
     /* USER CODE BEGIN PV */
-    float radius = 19.00;
+    float radius = 19.08;
     float circumference;
     float stepPerMM;
 
@@ -101,8 +101,8 @@
     volatile uint32_t targetSteps;
     volatile uint32_t rampSteps;
 
-    volatile uint32_t cruiseARR = 300;
-    volatile uint32_t accelARR = 2000;
+    volatile uint32_t cruiseARR = 200;
+    volatile uint32_t accelARR = 1200;
     volatile uint32_t currentARR = 0;
     volatile int32_t  n = 0;
 
@@ -118,14 +118,14 @@
 
     //i am so confused
 
-    TimelineEvent_t rawTimeline[100]; 
-    TimelineEvent_t finalTimeline[100]; //100 events for 1 line, which i believe we should never hit that much, im guessing no more than like 60
+    TimelineEvent_t rawTimeline[200]; 
+    TimelineEvent_t finalTimeline[200]; //200 events for 1 line, which i believe we should never hit that much, im guessing no more than like 60
     uint32_t totalEvents = 0;
 
     LocalFeature_t recipe[] = {
-    {300.0f, 0, 1, 0},
-    {600.0f, 0, 1, 0},
-    {1000.0f, 0, 0, 1},
+    {333.0f, 0, 1, 0},
+    {762.0f, 0, 1, 0},
+    {1095.0f, 0, 0, 1},
     }; //will somehow uh make this editable
     #define RECIPE_SIZE (sizeof(recipe) / sizeof(recipe[0]))
     
@@ -164,9 +164,6 @@
     stepPerMM = 3200.0f / circumference;
 
 
-
-
-
     /*
 
     TODO
@@ -203,6 +200,14 @@
     /* USER CODE BEGIN 2 */
 
     HAL_GPIO_WritePin(DIR_GPIO_Port, DIR_Pin, 1); //Set direction to forward
+    HAL_GPIO_WritePin(YARMA_GPIO_Port, YARMA_Pin, 1);
+    HAL_GPIO_WritePin(KESME_GPIO_Port, KESME_Pin, 1);
+    HAL_GPIO_WritePin(DELME_GPIO_Port, DELME_Pin, 1);
+
+    HAL_GPIO_WritePin(KESME_GPIO_Port, KESME_Pin, 0);
+    HAL_Delay(3000);
+    HAL_GPIO_WritePin(KESME_GPIO_Port, KESME_Pin, 1);
+    HAL_Delay(100);
 
     HAL_GPIO_WritePin(GPIOA, LD2_Pin, GPIO_PIN_SET); // Turn on onboard LED
     char *testMsg = "UART is alive!\r\n";
@@ -213,6 +218,8 @@
     char msg[64];
     int len = sprintf(msg, "Total Events: %lu\r\n", totalEvents);
     HAL_UART_Transmit(&huart6, (uint8_t*)msg, len, 100);
+
+    
 
     triggerMove = 1;
     
@@ -537,7 +544,7 @@
         n = 0;
 
         cruiseARR = targetARR; 
-        accelARR  = cruiseARR * 6;  
+        accelARR  = cruiseARR * 6;
         currentARR = accelARR;
         rampSteps = targetSteps / 2;
 
@@ -602,7 +609,7 @@
                 HAL_UART_Transmit(&huart6, (uint8_t*)debugBuf, size, 100);
 
                 if(stepsToMove != 0){
-                    moveMotor(stepsToMove, 500);
+                    moveMotor(stepsToMove, cruiseARR);
                 }
                 processState = SYS_MOTORWAIT;
             } //
@@ -618,7 +625,7 @@
                 break;
 
             case SYS_WAIT_BEFORE_EX:
-                if((HAL_GetTick() - delayStartTime) >= 500){
+                if((HAL_GetTick() - delayStartTime) >= 1000){
                     processState = SYS_DYC_EXTEND;
                 }
                 break;
@@ -634,18 +641,18 @@
 
             
                 if(finalTimeline[eventIndex].isDelme){
-                    HAL_GPIO_WritePin(DELME_GPIO_Port, DELME_Pin, 1);
+                    HAL_GPIO_WritePin(DELME_GPIO_Port, DELME_Pin, 0);
     
                 }
                 
 
                 if(finalTimeline[eventIndex].isYarma){
-                    HAL_GPIO_WritePin(YARMA_GPIO_Port, YARMA_Pin, 1);
+                    HAL_GPIO_WritePin(YARMA_GPIO_Port, YARMA_Pin, 0);
 
                 }
 
                 if(finalTimeline[eventIndex].isKesme){
-                    HAL_GPIO_WritePin(KESME_GPIO_Port, KESME_Pin, 1);
+                    HAL_GPIO_WritePin(KESME_GPIO_Port, KESME_Pin, 0);
                     
                 
                 }
@@ -658,7 +665,7 @@
 
             case SYS_DYC_PRESS_WAIT:
 
-                if((HAL_GetTick() - delayStartTime) >= 1000){
+                if((HAL_GetTick() - delayStartTime) >= 4000){
                     processState = SYS_DYC_RETRACT;
                 }
                 break;
@@ -666,17 +673,17 @@
             case SYS_DYC_RETRACT:
 
                 if(finalTimeline[eventIndex].isDelme){
-                    HAL_GPIO_WritePin(DELME_GPIO_Port, DELME_Pin, 0);
+                    HAL_GPIO_WritePin(DELME_GPIO_Port, DELME_Pin, 1);
 
                 }
 
                 if(finalTimeline[eventIndex].isYarma){
-                    HAL_GPIO_WritePin(YARMA_GPIO_Port, YARMA_Pin, 0);
+                    HAL_GPIO_WritePin(YARMA_GPIO_Port, YARMA_Pin, 1);
 
                 }
 
                 if(finalTimeline[eventIndex].isKesme){
-                    HAL_GPIO_WritePin(KESME_GPIO_Port, KESME_Pin, 0);
+                    HAL_GPIO_WritePin(KESME_GPIO_Port, KESME_Pin, 1);
 
                 }
 
@@ -687,7 +694,7 @@
 
             case SYS_WAIT_AFTER_RET:
 
-                if((HAL_GetTick() - delayStartTime) >= 500){
+                if((HAL_GetTick() - delayStartTime) >= 1000){
                     eventIndex++;
                 uint32_t batchLimitSteps = (uint32_t)(((currentBatchStart + 10) * CONTA_LENGTH) * stepPerMM);
                 if (finalTimeline[eventIndex].absoluteSteps >= batchLimitSteps){
