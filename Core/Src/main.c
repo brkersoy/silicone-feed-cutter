@@ -23,17 +23,22 @@
         /* USER CODE BEGIN Includes */
         #include <stdio.h>
         #include <stdlib.h>
+        #include "motor_move.h"
 
         /* USER CODE END Includes */
 
         /* Private typedef -----------------------------------------------------------*/
         /* USER CODE BEGIN PTD */
+
+    /*
         typedef enum {
             STATE_IDLE,
             STATE_ACCEL,
             STATE_CRUISE,
             STATE_DECEL
         } MotionState_t;
+
+    */
 
         typedef enum{
             //SYS_IDLE, 
@@ -106,7 +111,7 @@
         volatile uint32_t targetSteps;
         volatile uint32_t rampSteps;
 
-        volatile uint32_t cruiseARR = 260;
+        volatile uint32_t cruiseARR = 150;
         volatile uint32_t accelARR = 1200;
         volatile uint32_t currentARR = 0;
         volatile int32_t  n = 0;
@@ -212,7 +217,7 @@
         HAL_GPIO_WritePin(KESME_GPIO_Port, KESME_Pin, 0);
         HAL_Delay(1500);
         HAL_GPIO_WritePin(KESME_GPIO_Port, KESME_Pin, 1);
-        HAL_Delay(100);
+        HAL_Delay(500);
 
         currentAbsPos = (uint32_t)(K_OFFSET_STEPS * stepPerMM + 0.5f);
 
@@ -544,7 +549,7 @@
 
         ////////////////////////////////////////////////////// i like a lil seperation
 
-
+/*
 
         void moveMotor(uint32_t steps, uint32_t targetARR){
 
@@ -580,6 +585,8 @@
             
 
         }
+
+    */
 
         ///////////////////////////////////////////////////////////////////////////////////////////
 
@@ -636,7 +643,7 @@
                     break;
 
                 case SYS_WAIT_BEFORE_EX:
-                    if((HAL_GetTick() - delayStartTime) >= 250){
+                    if((HAL_GetTick() - delayStartTime) >= 200){
                         processState = SYS_DYC_EXTEND;
                     }
                     break;
@@ -683,7 +690,7 @@
                     
 
                     if(finalTimeline[eventIndex].isYarma){
-                        pressWait = 450;
+                        pressWait = 500;
                         
 
                     }
@@ -724,7 +731,7 @@
 
                 case SYS_WAIT_AFTER_RET:
 
-                    if((HAL_GetTick() - delayStartTime) >= 250){
+                    if((HAL_GetTick() - delayStartTime) >= 200){
                         eventIndex++;
                     uint32_t batchLimitSteps = (uint32_t)(((currentBatchStart + 10) * CONTA_LENGTH) * stepPerMM);
                     if (finalTimeline[eventIndex].absoluteSteps >= batchLimitSteps){
