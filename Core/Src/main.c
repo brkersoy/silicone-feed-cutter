@@ -24,6 +24,7 @@
         #include <stdio.h>
         #include <stdlib.h>
         #include "motor_move.h"
+        #include "motor_accel.h"
 
         /* USER CODE END Includes */
 
@@ -464,7 +465,7 @@
         /* USER CODE BEGIN 4 */
 
 
-
+/*
         void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
         {
             if (htim->Instance == TIM1) {
@@ -545,6 +546,8 @@
                 __HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_1, currentARR / 2); //50% duty cycle always!
             }
         }
+
+*/
 
 
         ////////////////////////////////////////////////////// i like a lil seperation
