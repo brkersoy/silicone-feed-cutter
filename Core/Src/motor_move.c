@@ -5,17 +5,6 @@
 #include "motor_move.h"
 
 
-extern TIM_HandleTypeDef htim1;
-extern volatile MotionState_t state; 
-extern volatile uint32_t targetSteps;
-extern volatile uint32_t stepCounter;
-extern volatile uint32_t motionComplete;
-extern volatile uint32_t n;
-extern volatile uint32_t cruiseARR;
-extern volatile uint32_t accelARR;
-extern volatile uint32_t currentARR;
-extern volatile uint32_t rampSteps;
-
 void moveMotor(uint32_t steps, uint32_t targetARR){
 
             if(state != STATE_IDLE){

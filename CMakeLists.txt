@@ -45,6 +45,9 @@ target_link_directories(${CMAKE_PROJECT_NAME} PRIVATE
 # Add sources to executable
 target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     Core/Src/motor_move.c
+    Core/Src/motor_accel.c
+    Core/Src/timeline_planner.c
+    Core/Src/process_sequence.c
     # Add user sources here
 )
 
