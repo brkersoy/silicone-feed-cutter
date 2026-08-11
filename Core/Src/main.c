@@ -25,66 +25,21 @@
         #include <stdlib.h>
         #include "motor_move.h"
         #include "motor_accel.h"
+        #include "process_sequence.h"
+        #include "timeline_planner.h"
 
         /* USER CODE END Includes */
 
         /* Private typedef -----------------------------------------------------------*/
         /* USER CODE BEGIN PTD */
 
-    /*
-        typedef enum {
-            STATE_IDLE,
-            STATE_ACCEL,
-            STATE_CRUISE,
-            STATE_DECEL
-        } MotionState_t;
 
-    */
-
-        typedef enum{
-            //SYS_IDLE, 
-            SYS_START,
-            SYS_MOTORMOVE,
-            SYS_MOTORWAIT,
-            SYS_WAIT_BEFORE_EX,
-            SYS_DYC_EXTEND,
-            SYS_DYC_PRESS_WAIT,
-            SYS_DYC_RETRACT,
-            SYS_WAIT_AFTER_RET,
-
-        //    SYS_CUT,
-        //   SYS_WAIT_AFTER_CUT,
-
-        // SYS_DONE
-        }MovementState_t;
-
-        typedef struct { //absolute total steps
-            uint32_t absoluteSteps;
-            uint8_t  isDelme;
-            uint8_t  isYarma;
-            uint8_t  isKesme;
-        } TimelineEvent_t;
-
-        typedef struct { //for ONE item only
-            float localOffset; 
-            uint8_t isD;
-            uint8_t isY;
-            uint8_t isC;
-        } LocalFeature_t;
-
-        int ab;
         /* USER CODE END PTD */
 
         /* Private define ------------------------------------------------------------*/
         /* USER CODE BEGIN PD */
 
-        #define Y_OFFSET_STEPS 0.0f //yarma piston offset
-        #define D_OFFSET_STEPS 50.0f //delme piston offset
-        #define K_OFFSET_STEPS 80.0f //kesme piston offset
-
-        #define CONTA_LENGTH 1095.0f 
-
-        #define PI  3.1415
+       
         /* USER CODE END PD */
 
         /* Private macro -------------------------------------------------------------*/
@@ -98,14 +53,20 @@
         UART_HandleTypeDef huart6;
 
         /* USER CODE BEGIN PV */
-        uint32_t eventIndex = 0;
-        uint32_t currentAbsPos = 0;
-
+  
+        uint32_t currentBatchStart = 0;
+        uint32_t totalEvents = 0;
         uint32_t pressWait;
+        uint32_t axisOffSteps = 0;
+        uint32_t eventIndex = 0;
+        MovementState_t processState = SYS_START;
+        uint8_t triggerMove = 0;
+        uint32_t delayStartTime = 0;
+        float stepPerMM;
+        uint32_t currentAbsPos = 0;
 
         float radius = 18.93;
         float circumference;
-        float stepPerMM;
 
         volatile MotionState_t state = STATE_IDLE;
         volatile uint32_t stepCounter;
@@ -121,29 +82,8 @@
 
         uint8_t rx_buff[10];
 
-        MovementState_t processState = SYS_START;
 
-        uint8_t triggerMove = 0;
 
-        uint32_t delayStartTime = 0;
-
-        //i am so confused
-
-        TimelineEvent_t rawTimeline[200]; 
-        TimelineEvent_t finalTimeline[200]; //200 events for 1 line, which i believe we should never hit that much, im guessing no more than like 60
-        uint32_t totalEvents = 0;
-
-        LocalFeature_t recipe[] = {
-        {333.0f, 0, 1, 0},
-        {762.0f, 0, 1, 0},
-        {1095.0f, 0, 0, 1},
-        }; //will somehow uh make this editable
-        #define RECIPE_SIZE (sizeof(recipe) / sizeof(recipe[0]))
-        
-
-        uint32_t axisOffSteps = 0;
-
-        uint32_t currentBatchStart = 0;
         /* USER CODE END PV */
 
         /* Private function prototypes -----------------------------------------------*/
@@ -175,15 +115,7 @@
         stepPerMM = 3200.0f / circumference;
 
 
-        /*
-
-        TODO
-
-        SEPERATE INTO DIFFERENT FILES
-        IMPLEMENT ARR INPUT
-        ADD STEP/MM SCALING
-
-        */
+    
 
 
         /* USER CODE END 1 */
@@ -230,6 +162,7 @@
         CompileTimeline(0);
 
         eventIndex = 0;
+        
         for (uint32_t i = 0; i < totalEvents; i++) {
             if (finalTimeline[i].absoluteSteps > currentAbsPos) {
                 eventIndex = i;
@@ -463,397 +396,6 @@
         }
 
         /* USER CODE BEGIN 4 */
-
-
-/*
-        void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
-        {
-            if (htim->Instance == TIM1) {
-                stepCounter++;
-
-                switch (state) {
-
-                    case STATE_ACCEL:
-                    {
-                        n++;
-                        int32_t delta = (int32_t)(((2ULL * currentARR) + ((4 * n) + 1) / 2) / ((4 * n) + 1)); //avr446 algorithm. no point in complex floating point calculations
-                        
-                        if (delta < 1) {
-                            delta = 1; 
-                        }
-
-                        if ((currentARR > cruiseARR) && (currentARR > delta) && ((currentARR - delta) >= cruiseARR)) {
-                            currentARR -= delta;
-                        } else {
-                            currentARR = cruiseARR;
-                            rampSteps = stepCounter;
-                            state = STATE_CRUISE;
-                        }
-
-                        if (stepCounter >= (targetSteps / 2)) {
-                            rampSteps = stepCounter;
-                            state = STATE_DECEL;
-                        }
-                        break;
-                    }
-
-                    case STATE_CRUISE:
-                    {
-                        if (stepCounter >= (targetSteps - rampSteps)) {
-                            state = STATE_DECEL;
-                        }
-                        break;
-                    }
-
-                    case STATE_DECEL:
-                    {
-                        if (n > 0) {
-                            n--;
-                            int32_t denom = (4 * n) - 1;
-                            if (denom > 0) {
-                                int32_t delta = (int32_t)(((2ULL * currentARR) + (denom / 2)) / denom); //reverse avr446
-                                if (delta < 1) {
-                                    delta = 1;  
-                                }
-                                currentARR += delta;
-                            }
-                            if (currentARR > accelARR) {
-                                currentARR = accelARR;
-                            }
-                        } else {
-                            currentARR = accelARR; // hold baseline speed
-                        }
-                        
-                            
-
-                        if (stepCounter >= targetSteps) {
-                            state = STATE_IDLE;
-                            motionComplete = 1;
-                            __HAL_TIM_DISABLE_IT(&htim1, TIM_IT_UPDATE);
-                            HAL_TIM_PWM_Stop(&htim1, TIM_CHANNEL_1); 
-                            __HAL_TIM_MOE_DISABLE(&htim1); //kill 7 billion timers
-                            return;
-                        }
-                        break;
-                    }
-
-                    default:
-                        break;
-                }
-
-
-                __HAL_TIM_SET_AUTORELOAD(&htim1, currentARR);
-                __HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_1, currentARR / 2); //50% duty cycle always!
-            }
-        }
-
-*/
-
-
-        ////////////////////////////////////////////////////// i like a lil seperation
-
-/*
-
-        void moveMotor(uint32_t steps, uint32_t targetARR){
-
-            if(state != STATE_IDLE){
-            return;
-            }
-
-            targetSteps = steps;
-            motionComplete = 0;
-            stepCounter = 0;
-            n = 0;
-
-            cruiseARR = targetARR; 
-            accelARR  = cruiseARR * 6;
-            currentARR = accelARR;
-            rampSteps = targetSteps / 2;
-
-
-            __HAL_TIM_SET_AUTORELOAD(&htim1, currentARR);
-            __HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_1, currentARR / 2); //%50 duty cycle always
-            __HAL_TIM_SET_COUNTER(&htim1, 0);
-
-        
-            __HAL_TIM_ENABLE_OCxPRELOAD(&htim1, TIM_CHANNEL_1); //output compare preload
-            __HAL_TIM_CLEAR_FLAG(&htim1, TIM_FLAG_UPDATE);
-
-            state = STATE_ACCEL;
-
-            //start pwm
-            __HAL_TIM_ENABLE_IT(&htim1, TIM_IT_UPDATE);
-            HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_1);
-            __HAL_TIM_MOE_ENABLE(&htim1);
-            
-
-        }
-
-    */
-
-        ///////////////////////////////////////////////////////////////////////////////////////////
-
-        void processSequence(){
-
-
-            switch(processState){
-                case SYS_START:
-                    if(triggerMove == 1 && state == STATE_IDLE){
-                        
-        
-                        processState = SYS_MOTORMOVE;
-                    }
-                    break;
-
-                case SYS_MOTORMOVE:
-                {
-                    HAL_GPIO_WritePin(DIR_GPIO_Port, DIR_Pin, 1);
-                    uint32_t targetAbs = finalTimeline[eventIndex].absoluteSteps + axisOffSteps;
-                    uint32_t stepsToMove = targetAbs - currentAbsPos;
-                    currentAbsPos = targetAbs;
-
-                    float targetMM = (float)targetAbs / stepPerMM;
-                    float moveMM = (float)stepsToMove / stepPerMM;
-        
-                // extracts whole and fractional parts
-                    uint32_t moveWhole = (uint32_t)moveMM;
-                    uint32_t moveFrac  = (uint32_t)((moveMM - moveWhole) * 100); // .XX
-        
-                    uint32_t targetWhole = (uint32_t)targetMM;
-                    uint32_t targetFrac  = (uint32_t)((targetMM - targetWhole) * 100);
-
-                    char debugBuf[96];
-                    int size = sprintf(debugBuf, "Moving %lu steps (%lu.%02lu mm) -> Target: %lu steps (%lu.%02lu mm)\r\n", 
-                        stepsToMove, moveWhole, moveFrac, 
-                        targetAbs, targetWhole, targetFrac);
-
-                    HAL_UART_Transmit(&huart6, (uint8_t*)debugBuf, size, 100);
-
-                    if(stepsToMove != 0){
-                        moveMotor(stepsToMove, cruiseARR);
-                    }
-                    processState = SYS_MOTORWAIT;
-                } //
-                    break;
-
-                case SYS_MOTORWAIT:
-
-                    if(state == STATE_IDLE){
-                        processState = SYS_WAIT_BEFORE_EX;
-                        delayStartTime = HAL_GetTick();
-                        
-                    }
-                    break;
-
-                case SYS_WAIT_BEFORE_EX:
-                    if((HAL_GetTick() - delayStartTime) >= 200){
-                        processState = SYS_DYC_EXTEND;
-                    }
-                    break;
-
-                case SYS_DYC_EXTEND:
-                    {
-                    char toolMsg[64];
-                    int tSize = sprintf(toolMsg, "Tools Firing -> D:%d Y:%d C:%d\r\n", 
-                                        finalTimeline[eventIndex].isDelme, 
-                                        finalTimeline[eventIndex].isYarma, 
-                                        finalTimeline[eventIndex].isKesme);
-                    HAL_UART_Transmit(&huart6, (uint8_t*)toolMsg, tSize, 100);
-
-                
-                    if(finalTimeline[eventIndex].isDelme){
-                        HAL_GPIO_WritePin(DELME_GPIO_Port, DELME_Pin, 0);
-        
-                    }
-                    
-
-                    if(finalTimeline[eventIndex].isYarma){
-                        HAL_GPIO_WritePin(YARMA_GPIO_Port, YARMA_Pin, 0);
-
-                    }
-
-                    if(finalTimeline[eventIndex].isKesme){
-                        HAL_GPIO_WritePin(KESME_GPIO_Port, KESME_Pin, 0);
-                        
-                    
-                    }
-
-                    processState = SYS_DYC_PRESS_WAIT;
-                    delayStartTime = HAL_GetTick();
-
-                }
-                    break;
-
-                case SYS_DYC_PRESS_WAIT:
-
-                    if(finalTimeline[eventIndex].isDelme){
-                        pressWait = 1000;
-        
-                    }
-                    
-
-                    if(finalTimeline[eventIndex].isYarma){
-                        pressWait = 500;
-                        
-
-                    }
-
-                    if(finalTimeline[eventIndex].isKesme){
-                        pressWait = 400;  
-                        
-                    
-                    }
-                    
-                
-                    if((HAL_GetTick() - delayStartTime) >= pressWait){
-                        processState = SYS_DYC_RETRACT;
-                    }
-                    break;
-                
-                case SYS_DYC_RETRACT:
-
-                    if(finalTimeline[eventIndex].isDelme){
-                        HAL_GPIO_WritePin(DELME_GPIO_Port, DELME_Pin, 1);
-
-                    }
-
-                    if(finalTimeline[eventIndex].isYarma){
-                        HAL_GPIO_WritePin(YARMA_GPIO_Port, YARMA_Pin, 1);
-
-                    }
-
-                    if(finalTimeline[eventIndex].isKesme){
-                        HAL_GPIO_WritePin(KESME_GPIO_Port, KESME_Pin, 1);
-
-                    }
-
-                    processState = SYS_WAIT_AFTER_RET;
-                    delayStartTime = HAL_GetTick();
-
-                    break;
-
-                case SYS_WAIT_AFTER_RET:
-
-                    if((HAL_GetTick() - delayStartTime) >= 200){
-                        eventIndex++;
-                    uint32_t batchLimitSteps = (uint32_t)(((currentBatchStart + 10) * CONTA_LENGTH) * stepPerMM);
-                    if (finalTimeline[eventIndex].absoluteSteps >= batchLimitSteps){
-                            
-                            currentBatchStart += 10;           // Slide the window forward 10 pieces
-                            CompileTimeline(currentBatchStart); // recompiling the next 10
-
-                            // find where it was left off
-                            for(uint32_t i = 0; i < totalEvents; i++){ //check the absolute step of the event on the timeline and compare to current position- if it's lower it happened, if it's higher it hasn't and will be queued up
-                                if(finalTimeline[i].absoluteSteps > currentAbsPos){
-                                    eventIndex = i;
-                                    break;
-                                }
-                            }
-                            processState = SYS_MOTORMOVE;
-                            HAL_GPIO_WritePin(DIR_GPIO_Port, DIR_Pin, 1);
-                        } else {
-                            processState = SYS_MOTORMOVE;
-                            HAL_GPIO_WritePin(DIR_GPIO_Port, DIR_Pin, 1);
-                        }
-                    }
-                    break;
-
-
-                /*
-                Cut branch  
-                might not be needed anymore?
-                
-
-                case SYS_WAIT_AFTER_CUT:
-
-                    if((HAL_GetTick() - delayStartTime) >= 1000){
-                        triggerMove = 0;
-                        processState = SYS_START;
-                    }
-                    
-                */
-
-            }
-        
-        }
-
-        //you wiiiill neveeer love me agaiin
-
-        void CompileTimeline(uint32_t startPiece){
-
-        uint32_t rawIndex = 0;
-
-        uint32_t pastBuffer = (startPiece >= 5) ? (startPiece - 5) : 0; //if i didn't add this it forgot the immediate next steps at the rollover on the 10th. it should be buffering the last five and the next 15 e.g. 5-25
-
-            for(uint32_t n_buffer = pastBuffer; n_buffer < startPiece + 15; n_buffer++){
-                for(uint8_t i = 0; i < RECIPE_SIZE; i++){  //MAKE i HERE CHANGEABLE
-                
-                float toolOffset = 0;
-
-                if(recipe[i].isD){
-                toolOffset = D_OFFSET_STEPS;
-                }
-                else if(recipe[i].isY){
-                toolOffset = Y_OFFSET_STEPS;
-                }
-                else if(recipe[i].isC){
-                toolOffset = K_OFFSET_STEPS;  
-                }
-                
-                float absMM = (n_buffer * CONTA_LENGTH) + toolOffset + recipe[i].localOffset;
-
-                uint32_t absSteps = (uint32_t)(absMM * stepPerMM + 0.5f);
-
-                rawTimeline[rawIndex].absoluteSteps = absSteps;
-                rawTimeline[rawIndex].isDelme = recipe[i].isD;
-                rawTimeline[rawIndex].isYarma = recipe[i].isY;
-                rawTimeline[rawIndex].isKesme = recipe[i].isC; //rawTimeline is the timeline before its sorted by steps from the starting point x = 0
-
-                rawIndex++;
-
-                }
-
-            }
-
-            for(uint32_t i = 0; i < rawIndex - 1; i++){ //simple bubble sort to sort rawTimeline. couldnt figure put qsort
-                for(uint32_t k = 0; k < rawIndex - i -1; k++){
-
-                if(rawTimeline[k].absoluteSteps > rawTimeline[k + 1].absoluteSteps){
-                    TimelineEvent_t temp = rawTimeline[k];
-                    rawTimeline[k] = rawTimeline[k + 1];
-                    rawTimeline[k + 1] = temp;  
-                }
-                }
-
-
-            
-
-            
-
-            }
-
-            totalEvents = 0; //merge if multiple events happen at the same time  THIS PART MIGHT BE BROKEN!
-            for (uint32_t j = 0; j < rawIndex; j++) {
-                if (totalEvents > 0 && rawTimeline[j].absoluteSteps == finalTimeline[totalEvents - 1].absoluteSteps) {
-        
-                    finalTimeline[totalEvents - 1].isDelme |= rawTimeline[j].isDelme;
-                    finalTimeline[totalEvents - 1].isYarma |= rawTimeline[j].isYarma;
-                    finalTimeline[totalEvents - 1].isKesme |= rawTimeline[j].isKesme;
-                } else {
-
-                    finalTimeline[totalEvents] = rawTimeline[j];
-                    totalEvents++;
-                }
-            
-
-            }
-            //finalTimeline is the final array to use!
-
-
-        }
-
-
-
 
         /* USER CODE END 4 */
 
