@@ -15,9 +15,8 @@
 
 const uint16_t recipeSize = (sizeof(recipe) / sizeof(recipe[0]));
         
-
-
-
+TimelineEvent_t rawTimeline[400];
+TimelineEvent_t finalTimeline[400];
 
  
  void CompileTimeline(uint32_t startPiece){
