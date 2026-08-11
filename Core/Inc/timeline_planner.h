@@ -37,8 +37,6 @@ extern const uint16_t recipeSize;
 
 extern LocalFeature_t recipe[];
 
-
-
 void CompileTimeline(uint32_t startPiece);
 
         

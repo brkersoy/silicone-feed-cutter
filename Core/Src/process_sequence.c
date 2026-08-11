@@ -64,6 +64,7 @@
 
                 case SYS_DYC_EXTEND:
                     {
+                    pressWait = 0;
                     char toolMsg[64];
                     int tSize = sprintf(toolMsg, "Tools Firing -> D:%d Y:%d C:%d\r\n", 
                                         finalTimeline[eventIndex].isDelme, 
@@ -97,24 +98,9 @@
 
                 case SYS_DYC_PRESS_WAIT:
 
-                    if(finalTimeline[eventIndex].isDelme){
-                        pressWait = 1000;
-        
-                    }
-                    
-
-                    if(finalTimeline[eventIndex].isYarma){
-                        pressWait = 500;
-                        
-
-                    }
-
-                    if(finalTimeline[eventIndex].isKesme){
-                        pressWait = 400;  
-                        
-                    
-                    }
-                    
+                    if(finalTimeline[eventIndex].isDelme && 1000 > pressWait) pressWait = 1000;
+                    if(finalTimeline[eventIndex].isYarma && 500 > pressWait)  pressWait = 500;
+                    if(finalTimeline[eventIndex].isKesme && 400 > pressWait)  pressWait = 400;
                 
                     if((HAL_GetTick() - delayStartTime) >= pressWait){
                         processState = SYS_DYC_RETRACT;
