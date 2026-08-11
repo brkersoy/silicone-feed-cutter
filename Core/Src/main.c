@@ -74,9 +74,9 @@
         volatile uint32_t rampSteps;
 
         volatile uint32_t cruiseARR = 150;
-        volatile uint32_t accelARR = 1200;
+        volatile uint32_t accelARR = 1200; //i don't know if this is necessary, but i'm afraid to break it
         volatile uint32_t currentARR = 0;
-        volatile int32_t  n = 0;
+        volatile int32_t  n = 0; //worst variable naming of all time?
 
         volatile uint8_t motionComplete = 0;
 

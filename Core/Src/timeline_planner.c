@@ -1,19 +1,18 @@
 #include "main.h" 
 #include "timeline_planner.h"
 #include <stdint.h>
+#include "sd_manager.h"
 
 
+/*
 
+LocalFeature_t recipe[] = {
+    {333.0f, 0, 1, 0},
+    {762.0f, 0, 1, 0},
+    {1095.0f, 0, 0, 1},
+}; //will somehow uh make this editable
 
-
-        LocalFeature_t recipe[] = {
-        {333.0f, 0, 1, 0},
-        {762.0f, 0, 1, 0},
-        {1095.0f, 0, 0, 1},
-        }; //will somehow uh make this editable
-
-
-const uint16_t recipeSize = (sizeof(recipe) / sizeof(recipe[0]));
+*/
         
 TimelineEvent_t rawTimeline[400];
 TimelineEvent_t finalTimeline[400];
