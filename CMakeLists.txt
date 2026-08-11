@@ -48,6 +48,8 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     Core/Src/motor_accel.c
     Core/Src/timeline_planner.c
     Core/Src/process_sequence.c
+    Core/Src/sd_manager.c
+    
     # Add user sources here
 )
 

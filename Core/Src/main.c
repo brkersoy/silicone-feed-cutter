@@ -27,6 +27,7 @@
         #include "motor_accel.h"
         #include "process_sequence.h"
         #include "timeline_planner.h"
+        #include "sd_manager.h"
 
         /* USER CODE END Includes */
 

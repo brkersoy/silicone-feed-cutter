@@ -3,16 +3,6 @@
 #include <stdint.h>
 #include "sd_manager.h"
 
-
-/*
-
-LocalFeature_t recipe[] = {
-    {333.0f, 0, 1, 0},
-    {762.0f, 0, 1, 0},
-    {1095.0f, 0, 0, 1},
-}; //will somehow uh make this editable
-
-*/
         
 TimelineEvent_t rawTimeline[400];
 TimelineEvent_t finalTimeline[400];
@@ -30,28 +20,28 @@ TimelineEvent_t finalTimeline[400];
         }//if i didn't add this it forgot the immediate next steps at the rollover on the 10th. it should be buffering the last five and the next 15 e.g. 5-25
 
             for(uint32_t n_buffer = pastBuffer; n_buffer < startPiece + 15; n_buffer++){
-                for(uint8_t i = 0; i < recipeSize; i++){  
+                for(uint8_t i = 0; i < recipe.count; i++){  
                 
                 float toolOffset = 0;
 
-                if(recipe[i].isD){
+                if(recipe.features[i].isD){
                 toolOffset = D_OFFSET_STEPS;
                 }
-                else if(recipe[i].isY){
+                else if(recipe.features[i].isY){
                 toolOffset = Y_OFFSET_STEPS;
                 }
-                else if(recipe[i].isC){
+                else if(recipe.features[i].isC){
                 toolOffset = K_OFFSET_STEPS;  
                 }
                 
-                float absMM = (n_buffer * CONTA_LENGTH) + toolOffset + recipe[i].localOffset;
+                float absMM = (n_buffer * CONTA_LENGTH) + toolOffset + recipe.features[i].localOffset;
 
                 uint32_t absSteps = (uint32_t)(absMM * stepPerMM + 0.5f);
 
                 rawTimeline[rawIndex].absoluteSteps = absSteps;
-                rawTimeline[rawIndex].isDelme = recipe[i].isD;
-                rawTimeline[rawIndex].isYarma = recipe[i].isY;
-                rawTimeline[rawIndex].isKesme = recipe[i].isC; //rawTimeline is the timeline before its sorted by steps from the starting point x = 0
+                rawTimeline[rawIndex].isDelme = recipe.features[i].isD;
+                rawTimeline[rawIndex].isYarma = recipe.features[i].isY;
+                rawTimeline[rawIndex].isKesme = recipe.features[i].isC; //rawTimeline is the timeline before its sorted by steps from the starting point x = 0
 
                 rawIndex++;
 
@@ -68,9 +58,6 @@ TimelineEvent_t finalTimeline[400];
                     rawTimeline[k + 1] = temp;  
                 }
                 }
-
-
-            
 
             
 
